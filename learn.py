@@ -3,7 +3,6 @@ import numpy
 import math
 from joblib import Parallel, delayed
 from scipy import sparse
-import cache
 import matplotlib.pyplot as plt
 
 global WORD_TO_ID_MAP
@@ -77,9 +76,13 @@ def informationGainAverage(feature, docList):
         I_E1 = getInfo(countFeatureT_AND_Alt, countFeatureT_AND_Comp)
         I_E2 = getInfo(countFeatureF_AND_Alt, countFeatureF_AND_Comp)
 
+        N_1 = countFeatureT_AND_Alt + countFeatureT_AND_Comp
+        N_2 = countFeatureF_AND_Alt + countFeatureF_AND_Comp
+        N = N_1 + N_2
+
         # majority Newsgroup 
         pointEstimate = 1 if alts > comps else 2
-        return (feature, I - 0.5 * I_E1 - 0.5 * I_E2, pointEstimate)
+        return (feature, I - (1.0*N_1/N)*I_E1 - (1.0*N_2/N)*I_E2, pointEstimate)
 
     except IndexError: # happens if the word is not in either doc
         return (feature, 0, 0)
@@ -93,7 +96,7 @@ def getBestFeatureAndValue(wordset, docList):
         results = Parallel(n_jobs=4)(delayed(informationGainAverage)(word, docList) for word in wordset)
         bestWordInfoGainEstimateTuple = max(results, key=lambda x: x[1])
 
-    #print bestWordInfoGainEstimateTuple
+    print bestWordInfoGainEstimateTuple
     return bestWordInfoGainEstimateTuple
 
 """ Build the Decision Tree"""
@@ -142,19 +145,22 @@ def decisionTreeLearner(wordset, docList, maxNodes):
         #print "%s - %i Split %i %i" % (treeNode.feature, len(bestQueueNode.docList), len(L), len(R))
 
         # Classify Here to generate chart
+        
         numCorrect = sum( classify(docId, root, DocWordMatrix) == DocLabelTestData[docId] for docId in testDocList)
         percentage = 1.0*numCorrect/len(testDocList)
         percentagesCorrect.append( percentage )
         print n, percentage
-
+        
         n += 1
 
-    plt.title('Test data classifications')
+    
+    plt.title('Training data classifications')
     plt.xlabel('Number of Nodes Used')
     plt.ylabel('Percentage Correct')
-    xAxisNodes = [i+1 for i in range(0,maxNodes)]
+    xAxisNodes = [i+1 for i in range(0,len(percentagesCorrect))]
     plt.plot(xAxisNodes, percentagesCorrect, 'ro')
     plt.show()
+    
 
     return root
 
@@ -211,9 +217,11 @@ def generateTestDataGraph(DecisionTree):
     plt.show()
 
 if __name__ == "__main__":
+    import cache
+    import cacheWeighted
 
-    CACHE = cache.CACHE
-    
+    CACHE = cacheWeighted.CACHE
+
     # Read data
     WORD_TO_ID_MAP = {}
     wordset = set()
