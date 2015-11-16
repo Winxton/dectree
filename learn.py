@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 global WORD_TO_ID_MAP
 global DOC_ID_TO_LABEL_MAP
 global DOC_WORD_PAIR_EXISTS
-global CACHE
 
 class TreeNode:
     def __init__(self, left, right, feature, infoGain, pointEstimate):
@@ -41,7 +40,7 @@ class QueueNode:
         self.docList = docList
 
     def __cmp__(self, other):
-        return cmp(self.informationGain, other.informationGain)
+        return -cmp(self.informationGain, other.informationGain)
 
 def getInfo(n, m):
     if (n + m == 0):
@@ -49,7 +48,7 @@ def getInfo(n, m):
     p1 = 1.0 * n / (n+m)
     p2 = 1 - p1
     p1 = 0 if p1 == 0 else p1*math.log(p1, 2)
-    p2 = 0 if p1 == 0 else p2*math.log(p2, 2)
+    p2 = 0 if p2 == 0 else p2*math.log(p2, 2)
     return -p1-p2
 
 def informationGainAverage(feature, docList):
@@ -82,21 +81,18 @@ def informationGainAverage(feature, docList):
 
         # majority Newsgroup 
         pointEstimate = 1 if alts > comps else 2
-        return (feature, I - (1.0*N_1/N)*I_E1 - (1.0*N_2/N)*I_E2, pointEstimate)
+        #infoGain = 0 if N == 0 else I - (1.0*N_1/N)*I_E1 - (1.0*N_2/N)*I_E2
+        infoGain = 0 if N == 0 else I - 0.5*I_E1 - 0.5*I_E2
+
+        return (feature, infoGain, pointEstimate)
 
     except IndexError: # happens if the word is not in either doc
         return (feature, 0, 0)
 
 def getBestFeatureAndValue(wordset, docList):
-    #print "Getting best feature.."
+    results = Parallel(n_jobs=4)(delayed(informationGainAverage)(word, docList) for word in wordset)
+    bestWordInfoGainEstimateTuple = max(results, key=lambda x: x[1])
 
-    if (len(CACHE)>0):
-        bestWordInfoGainEstimateTuple = CACHE.pop(0)
-    else:
-        results = Parallel(n_jobs=4)(delayed(informationGainAverage)(word, docList) for word in wordset)
-        bestWordInfoGainEstimateTuple = max(results, key=lambda x: x[1])
-
-    print bestWordInfoGainEstimateTuple
     return bestWordInfoGainEstimateTuple
 
 """ Build the Decision Tree"""
@@ -142,25 +138,19 @@ def decisionTreeLearner(wordset, docList, maxNodes):
             heapq.heappush(pqLeaves, rightQueueNode)
         treeNode.right = rightTreeNode
 
-        #print "%s - %i Split %i %i" % (treeNode.feature, len(bestQueueNode.docList), len(L), len(R))
-
         # Classify Here to generate chart
-        
         numCorrect = sum( classify(docId, root, DocWordMatrix) == DocLabelTestData[docId] for docId in testDocList)
         percentage = 1.0*numCorrect/len(testDocList)
         percentagesCorrect.append( percentage )
-        print n, percentage
-        
+        print n, percentage        
         n += 1
 
-    
-    plt.title('Training data classifications')
+    plt.title('Test data classifications')
     plt.xlabel('Number of Nodes Used')
     plt.ylabel('Percentage Correct')
     xAxisNodes = [i+1 for i in range(0,len(percentagesCorrect))]
     plt.plot(xAxisNodes, percentagesCorrect, 'ro')
     plt.show()
-    
 
     return root
 
@@ -217,11 +207,6 @@ def generateTestDataGraph(DecisionTree):
     plt.show()
 
 if __name__ == "__main__":
-    import cache
-    import cacheWeighted
-
-    CACHE = cacheWeighted.CACHE
-
     # Read data
     WORD_TO_ID_MAP = {}
     wordset = set()
@@ -232,6 +217,5 @@ if __name__ == "__main__":
 
     docList, DOC_WORD_PAIR_EXISTS, DOC_ID_TO_LABEL_MAP = getDataInfo('trainData.txt', 'trainLabel.txt')
 
-    root = decisionTreeLearner(wordset, docList, 100)
-    #generateTrainingDataGraph(docList, root)
-    #generateTestDataGraph(root)
+    root = decisionTreeLearner(wordset, docList, 10)
+    print root
